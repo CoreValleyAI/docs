@@ -102,14 +102,3 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
-
-      # Tell IndexNow engines (Bing, Yandex, Seznam, Naver…) the docs changed.
-      # The key file ships in the build (public/<key>.txt in the source repo).
-      - name: Notify search engines (IndexNow)
-        continue-on-error: true
-        env:
-          INDEXNOW_KEY: 33ff8a51559595949e0134533bfcd08b
-        run: |
-          urls="$(curl -fsS "$SITE_URL/sitemap.xml" | grep -o '<loc>[^<]*' | sed 's/<loc>//' | jq -R . | jq -sc .)"
-          body="$(jq -nc --arg host "${SITE_URL#https://}" --arg key "$INDEXNOW_KEY" --arg loc "$SITE_URL/$INDEXNOW_KEY.txt" --argjson urls "$urls" '{host: $host, key: $key, keyLocation: $loc, urlList: $urls}')"
-          curl -sS -o /dev/null -w 'IndexNow: HTTP %{http_code}\n' -X POST https://api.indexnow.org/indexnow -H 'content-type: application/json; charset=utf-8' --data "$body"
