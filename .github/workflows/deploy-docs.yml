@@ -1,37 +1,97 @@
 name: Deploy docs
 
-# Builds the MkDocs site and publishes it to GitHub Pages, served at
-# https://docs.corevalley.ai/ (docs/CNAME). Runs on every push to main.
+# Publishes https://docs.corevalley.ai/. The site is not built from this
+# repository: it is the docs build of CoreValleyAI/redesigned-portal
+# (`npm run build:docs`, Markdown in corevalley-docs/). This workflow checks
+# that repository's main every 15 minutes and rebuilds when it has moved
+# since the last deploy (build-sha.txt on the live site). Run it by hand
+# (Actions → Deploy docs → Run workflow) to publish at once; `ref` builds a
+# branch or commit instead of main.
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: "*/15 * * * *"
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit of CoreValleyAI/redesigned-portal to build
+        required: false
+        default: main
 
 permissions:
   contents: read
   pages: write
   id-token: write
+  # Re-enabling this workflow below keeps GitHub from switching the schedule
+  # off after 60 days without commits here.
+  actions: write
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPO: CoreValleyAI/redesigned-portal
+  SITE_URL: https://docs.corevalley.ai
+  NEXT_TELEMETRY_DISABLED: "1"
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      build: ${{ steps.source.outputs.build }}
+    steps:
+      - name: Resolve source commit
+        id: source
+        env:
+          REF: ${{ inputs.ref || 'main' }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          sha=$(git ls-remote "https://github.com/$SOURCE_REPO" "refs/heads/$REF" "refs/tags/$REF" | head -1 | cut -f1)
+          [ -n "$sha" ] || sha="$REF"
+          live=$(curl -fsSL "$SITE_URL/build-sha.txt" 2>/dev/null | tr -d '[:space:]' || true)
+          echo "source $REF = $sha, live = ${live:-none}"
+          build=true
+          if [ "$EVENT" = "schedule" ] && [ "$sha" = "$live" ]; then build=false; fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the schedule enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/deploy-docs.yml/enable" || true
+
   build:
+    needs: check
+    if: needs.check.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - name: Checkout ${{ env.SOURCE_REPO }}
+        uses: actions/checkout@v5
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements.txt
-      - run: mkdocs build
+          repository: ${{ env.SOURCE_REPO }}
+          ref: ${{ needs.check.outputs.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build docs site
+        run: npm run build:docs
         env:
-          DOCS_SITE_URL: https://docs.corevalley.ai
+          DOCS_SITE_URL: ${{ env.SITE_URL }}
+
+      - name: Record the source commit
+        run: echo "${{ needs.check.outputs.sha }}" > out-docs/build-sha.txt
+
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: site
+          path: out-docs
 
   deploy:
     needs: build

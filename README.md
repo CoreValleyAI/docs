@@ -1,14 +1,13 @@
-# CoreValley documentation
+# CoreValley docs host
 
-Source for https://docs.corevalley.ai — MkDocs Material.
+This repository serves **https://docs.corevalley.ai/** through GitHub Pages.
+It holds no documentation itself.
 
-- Pages: Markdown in `docs/`. Sidebar order and labels: `nav` in `mkdocs.yml`.
-- Publish: push to `main`; `.github/workflows/deploy-docs.yml` builds and deploys to GitHub Pages.
-- Preview locally:
+The docs are the docs build of
+[CoreValleyAI/redesigned-portal](https://github.com/CoreValleyAI/redesigned-portal):
+Markdown in `corevalley-docs/docs/`, sidebar order in `corevalley-docs/mkdocs.yml`,
+built with `npm run build:docs`. Edit them there.
 
-  ```bash
-  pip install -r requirements.txt
-  mkdocs serve        # http://127.0.0.1:8000
-  ```
-
-`docs/CNAME` holds the custom domain. Do not delete it.
+`.github/workflows/deploy-docs.yml` checks that repository's `main` every
+15 minutes and rebuilds and deploys when it has moved. To publish at once:
+Actions → **Deploy docs** → **Run workflow**.
